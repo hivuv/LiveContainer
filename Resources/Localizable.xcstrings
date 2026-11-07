@@ -32674,6 +32674,57 @@
           }
         }
       }
+    },
+    "lc.container.spoofDevice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spoof device (new identity)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cihazı taklit et (yeni kimlik)"
+          }
+        }
+      }
+    },
+    "lc.container.spoofedDevice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Device"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cihaz"
+          }
+        }
+      }
+    },
+    "lc.container.newIdentity" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generate new identity"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni kimlik oluştur"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

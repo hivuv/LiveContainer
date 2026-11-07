@@ -102,6 +102,28 @@ struct LCContainerView : View {
                         saveContainer()
                     }
                     
+                    Toggle(isOn: $container.spoofDevice) {
+                        Text("lc.container.spoofDevice".loc)
+                    }
+                    .onChange(of: container.spoofDevice) { newValue in
+                        if newValue { typingIDFV = container.spoofedIdentifier ?? "" }
+                        saveContainer()
+                    }
+                    
+                    if container.spoofDevice {
+                        HStack {
+                            Text("lc.container.spoofedDevice".loc)
+                            Spacer()
+                            Text("\(container.spoofedDeviceName ?? "") (\(container.spoofedDeviceModel ?? ""))")
+                                .foregroundStyle(.gray)
+                        }
+                        Button("lc.container.newIdentity".loc) {
+                            container.randomizeDevice()
+                            typingIDFV = container.spoofedIdentifier ?? ""
+                            saveContainer()
+                        }
+                    }
+                    
                     if container.spoofIdentifierForVendor {
                         HStack {
                             Text("UUID")

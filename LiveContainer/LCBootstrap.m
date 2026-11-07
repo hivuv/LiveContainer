@@ -535,6 +535,13 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
         }
     }
     
+    if([guestContainerInfo[@"spoofDevice"] boolValue]) {
+        NSString* devName = guestContainerInfo[@"spoofedDeviceName"];
+        NSString* devMachine = guestContainerInfo[@"spoofedDeviceModel"];
+        DeviceSpoofHookInit([devName isKindOfClass:NSString.class] ? devName : nil,
+                            [devMachine isKindOfClass:NSString.class] ? devMachine : nil);
+    }
+    
     bool is32bit = [guestAppInfo[@"is32bit"] boolValue];
     if(is32bit) {
         [lcUserDefaults removeObjectForKey:@"LC32BitTranslationLayerLogFile"];

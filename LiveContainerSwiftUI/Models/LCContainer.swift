@@ -27,6 +27,36 @@ class LCContainer : ObservableObject, Hashable {
         }
     }
     public var spoofedIdentifier: String?
+
+    /// Makes the guest app see a different device (name + model) and a fresh identity.
+    @Published var spoofDevice : Bool {
+        didSet {
+            if spoofDevice {
+                if spoofedDeviceName == nil || spoofedDeviceModel == nil {
+                    randomizeDevice()
+                }
+                if !spoofIdentifierForVendor {
+                    spoofIdentifierForVendor = true
+                }
+            }
+        }
+    }
+    public var spoofedDeviceName: String?
+    public var spoofedDeviceModel: String?
+
+    static let fakeDevices: [(name: String, model: String)] = [
+        ("iPhone 13", "iPhone14,5"), ("iPhone 14", "iPhone14,7"),
+        ("iPhone 14 Pro", "iPhone15,2"), ("iPhone 15", "iPhone15,4"),
+        ("iPhone 15 Pro", "iPhone16,1"), ("iPhone 16", "iPhone17,3"),
+        ("iPhone 16 Pro", "iPhone17,1")
+    ]
+
+    func randomizeDevice() {
+        let d = LCContainer.fakeDevices.randomElement()!
+        spoofedDeviceName = "\(d.name)"
+        spoofedDeviceModel = d.model
+        spoofedIdentifier = UUID().uuidString
+    }
     private var infoDict : [String:Any]?
     public var containerURL : URL {
         if let resolvedContainerURL {
@@ -66,12 +96,13 @@ class LCContainer : ObservableObject, Hashable {
         }
     }
     
-    init(folderName: String, name: String, isShared : Bool, isolateAppGroup: Bool = false, spoofIdentifierForVendor: Bool = false, bookmarkData: Data? = nil, resolvedContainerURL: URL? = nil) {
+    init(folderName: String, name: String, isShared : Bool, isolateAppGroup: Bool = false, spoofIdentifierForVendor: Bool = false, spoofDevice: Bool = false, bookmarkData: Data? = nil, resolvedContainerURL: URL? = nil) {
         self.folderName = folderName
         self.name = name
         self.isShared = isShared
         self.isolateAppGroup = isolateAppGroup
         self.spoofIdentifierForVendor = spoofIdentifierForVendor
+        self.spoofDevice = spoofDevice
         self.storageBookMark = bookmarkData
         self.resolvedContainerURL = resolvedContainerURL
     }
@@ -114,6 +145,9 @@ class LCContainer : ObservableObject, Hashable {
                 isolateAppGroup = plistInfo["isolateAppGroup"] as? Bool ?? false
                 spoofIdentifierForVendor = plistInfo["spoofIdentifierForVendor"] as? Bool ?? false
                 spoofedIdentifier = plistInfo["spoofedIdentifierForVendor"] as? String
+                spoofDevice = plistInfo["spoofDevice"] as? Bool ?? false
+                spoofedDeviceName = plistInfo["spoofedDeviceName"] as? String
+                spoofedDeviceModel = plistInfo["spoofedDeviceModel"] as? String
             }
         } catch {
             
@@ -137,8 +171,15 @@ class LCContainer : ObservableObject, Hashable {
             "name" : name,
             "keychainGroupId" : keychainGroupId,
             "isolateAppGroup" : isolateAppGroup,
-            "spoofIdentifierForVendor": spoofIdentifierForVendor
+            "spoofIdentifierForVendor": spoofIdentifierForVendor,
+            "spoofDevice": spoofDevice
         ]
+        if let spoofedDeviceName {
+            infoDict!["spoofedDeviceName"] = spoofedDeviceName
+        }
+        if let spoofedDeviceModel {
+            infoDict!["spoofedDeviceModel"] = spoofedDeviceModel
+        }
         if let spoofedIdentifier {
             infoDict!["spoofedIdentifierForVendor"] = spoofedIdentifier
         }
@@ -169,6 +210,9 @@ class LCContainer : ObservableObject, Hashable {
         isolateAppGroup = infoDict["isolateAppGroup"] as? Bool ?? false
         spoofIdentifierForVendor = infoDict["spoofIdentifierForVendor"] as? Bool ?? false
         spoofedIdentifier = infoDict["spoofedIdentifierForVendor"] as? String
+        spoofDevice = infoDict["spoofDevice"] as? Bool ?? false
+        spoofedDeviceName = infoDict["spoofedDeviceName"] as? String
+        spoofedDeviceModel = infoDict["spoofedDeviceModel"] as? String
     }
     
     static func == (lhs: LCContainer, rhs: LCContainer) -> Bool {
