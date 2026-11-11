@@ -121,6 +121,10 @@ NSString* FBSOpenApplicationOptionKeyPayloadURL = @"__PayloadURL";
     return appGroupPath;
 }
 
++ (NSString *)lcHomePath {
+    return [NSString stringWithUTF8String:LCHomePath()];
+}
+
 + (NSString *)certificatePassword {
     NSUserDefaults* nud = NSUserDefaults.lcSharedDefaults ?: NSUserDefaults.standardUserDefaults;
     return [nud objectForKey:@"LCCertificatePassword"];

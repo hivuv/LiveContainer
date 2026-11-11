@@ -17,6 +17,7 @@
 + (NSString*)findDefaultContainerWithBundleId:(NSString*)bundleId;
 + (NSDictionary *)containerInfoForHomePath:(NSString *)homePath;
 + (BOOL)writeContainerInfo:(NSDictionary *)info forHomePath:(NSString *)homePath;
++ (NSString *)lcHomePath;
 + (NSArray<NSString*>*)lcUnorderedUrlSchemes;
 + (NSArray<NSString*>*)lcUrlSchemes;
 @end
