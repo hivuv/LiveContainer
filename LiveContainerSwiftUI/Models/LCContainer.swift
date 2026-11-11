@@ -169,7 +169,7 @@ class LCContainer : ObservableObject, Hashable {
                 try fm.createDirectory(at: containerURL, withIntermediateDirectories: true)
             }
             
-            if let infoDict, LCSharedUtils.writeContainerInfo(infoDict as NSDictionary, forHomePath: containerURL.path) {
+            if let infoDict, LCSharedUtils.writeContainerInfo(infoDict as [AnyHashable : Any], forHomePath: containerURL.path) {
                 try? fm.removeItem(at: legacyInfoDictUrl)
             } else {
                 let plistData = try PropertyListSerialization.data(fromPropertyList: infoDict as Any, format: .binary, options: 0)
