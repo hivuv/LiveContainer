@@ -34,6 +34,17 @@ struct AppReplaceOption : Hashable {
     var isReplace: Bool
     var nameOfFolderToInstall: String
     var appToReplace: LCAppModel?
+    var freshContainer: Bool = false
+
+    var alertTitle: String {
+        if !isReplace {
+            return "lc.appList.installAsNew".loc
+        }
+        if freshContainer {
+            return "Replace \(nameOfFolderToInstall) (fresh container)"
+        }
+        return nameOfFolderToInstall
+    }
 }
 
 struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
@@ -305,7 +316,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                 Button(role: installOption.isReplace ? .destructive : nil, action: {
                     installReplaceAlert.close(result: installOption)
                 }, label: {
-                    Text(installOption.isReplace ? installOption.nameOfFolderToInstall : "lc.appList.installAsNew".loc)
+                    Text(installOption.alertTitle)
                 })
             
             }
@@ -630,6 +641,8 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         var appRelativePath = "\(newAppInfo.bundleIdentifier()!.sanitizeNonACSII()).app"
         var outputFolder = LCPath.bundlePath.appendingPathComponent(appRelativePath)
         var appToReplace : LCAppModel? = nil
+        var useFreshContainer = false
+        var freshKeychainGroup: Int? = nil
         // Folder exist! show alert for user to choose which bundle to replace
         var sameBundleIdApp = sharedModel.apps.filter { app in
             return app.appInfo.bundleIdentifier()! == newAppInfo.bundleIdentifier()
@@ -663,6 +676,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             
             for app in sameBundleIdApp {
                 self.installOptions.append(AppReplaceOption(isReplace: true, nameOfFolderToInstall: app.appInfo.relativeBundlePath, appToReplace: app))
+                self.installOptions.append(AppReplaceOption(isReplace: true, nameOfFolderToInstall: app.appInfo.relativeBundlePath, appToReplace: app, freshContainer: true))
             }
 
             guard let installOptionChosen = await installReplaceAlert.open() else {
@@ -670,6 +684,17 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                 self.installprogressVisible = false
                 try fm.removeItem(at: payloadPath)
                 return
+            }
+            useFreshContainer = installOptionChosen.freshContainer
+            if useFreshContainer {
+                guard let allocatedGroup = DataManager.shared.model.allocatedKeychainGroup() else {
+                    errorInfo = "lc.container.notEnoughKeychainGroup".loc
+                    errorShow = true
+                    self.installprogressVisible = false
+                    try fm.removeItem(at: payloadPath)
+                    return
+                }
+                freshKeychainGroup = allocatedGroup
             }
             
             if let appToReplace = installOptionChosen.appToReplace, appToReplace.uiIsShared {
@@ -744,6 +769,39 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             finalNewApp.jitLaunchScriptJs = appToReplace.appInfo.jitLaunchScriptJs
             finalNewApp.multitaskSpecified = appToReplace.appInfo.multitaskSpecified
             finalNewApp.classicMode = appToReplace.appInfo.classicMode
+
+            if useFreshContainer {
+                let newFolderName = UUID().uuidString
+                let basePath = finalNewApp.isShared ? LCPath.lcGroupDataPath : LCPath.dataPath
+                try FileManager.default.createDirectory(at: basePath.appendingPathComponent(newFolderName), withIntermediateDirectories: false)
+                let newContainer = LCContainer(
+                    folderName: newFolderName,
+                    name: newFolderName,
+                    isShared: finalNewApp.isShared,
+                    isolateAppGroup: LCUtils.newContainerShouldIsolateAppGroup,
+                    spoofIdentifierForVendor: LCUtils.newContainerShouldSpoofIDFV
+                )
+                newContainer.makeLCContainerInfoPlist(appIdentifier: finalNewApp.bundleIdentifier()!, keychainGroupId: freshKeychainGroup!)
+                var containers: [[String: Any]] = []
+                if let existingContainers = finalNewApp.containerInfo {
+                    containers = existingContainers.compactMap { $0 as? [String: Any] }
+                }
+                if containers.isEmpty, let oldDataUUID = appToReplace.appInfo.dataUUID, !oldDataUUID.isEmpty {
+                    let basePath = finalNewApp.isShared ? LCPath.lcGroupDataPath : LCPath.dataPath
+                    if FileManager.default.fileExists(atPath: basePath.appendingPathComponent(oldDataUUID).path) {
+                        let oldContainer = LCContainer(folderName: oldDataUUID, name: oldDataUUID, isShared: finalNewApp.isShared)
+                        oldContainer.loadName()
+                        if oldContainer.keychainGroupId < 0 {
+                            oldContainer.makeLCContainerInfoPlist(appIdentifier: finalNewApp.bundleIdentifier()!, keychainGroupId: 0)
+                        }
+                        containers.append(oldContainer.toDict())
+                    }
+                }
+                containers.append(newContainer.toDict())
+                finalNewApp.containerInfo = containers
+                finalNewApp.dataUUID = newFolderName
+            }
+
             finalNewApp.autoSaveDisabled = false
             finalNewApp.save()
         } else {

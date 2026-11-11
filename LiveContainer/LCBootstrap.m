@@ -33,6 +33,7 @@ bool isLiveProcess = false;
 bool isSharedBundle = false;
 bool isSideStore = false;
 bool sideStoreExist = false;
+static NSString* lcGlobalTweaksFolder;
 
 @implementation NSUserDefaults(LiveContainer)
 + (instancetype)lcUserDefaults {
@@ -79,6 +80,12 @@ bool sideStoreExist = false;
 }
 + (NSString*)lcLaunchURL {
     return lcLaunchURL;
+}
++ (NSString *)lcGlobalTweaksFolder {
+    return lcGlobalTweaksFolder;
+}
++ (void)setLCGlobalTweaksFolder:(NSString *)folder {
+    lcGlobalTweaksFolder = [folder copy];
 }
 @end
 
@@ -270,7 +277,7 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
     }
 
     NSFileManager *fm = NSFileManager.defaultManager;
-    NSString *docPath = [NSString stringWithFormat:@"%s/Documents", getenv("LC_HOME_PATH")];
+    NSString *docPath = [NSString stringWithFormat:@"%s/Documents", LCHomePath()];
     
     NSURL *appGroupFolder = nil;
     
@@ -349,7 +356,7 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
     } else {
         tweakFolder = [docPath stringByAppendingPathComponent:@"Tweaks"];
     }
-    setenv("LC_GLOBAL_TWEAKS_FOLDER", tweakFolder.UTF8String, 1);
+    [NSUserDefaults setLCGlobalTweaksFolder:tweakFolder];
 
     // Update TweakLoader symlink
     NSString *tweakLoaderPath = [tweakFolder stringByAppendingPathComponent:@"TweakLoader.dylib"];
@@ -481,8 +488,7 @@ static NSString* invokeAppMain(NSString *selectedApp, NSString *selectedContaine
         [fm createDirectoryAtPath:dirPath withIntermediateDirectories:YES attributes:nil error:nil];
     }
     
-    NSString* containerInfoPath = [newHomePath stringByAppendingPathComponent:@"LCContainerInfo.plist"];
-    guestContainerInfo = [NSDictionary dictionaryWithContentsOfFile:containerInfoPath];
+    guestContainerInfo = [LCSharedUtils containerInfoForHomePath:newHomePath];
     
     [LCSharedUtils setContainerUsingByLC:lcAppUrlScheme folderName:dataUUID auditToken:0];
 
@@ -670,7 +676,9 @@ int LiveContainerMain(int argc, char *argv[]) {
     lcAppUrlScheme = NSBundle.mainBundle.infoDictionary[@"CFBundleURLTypes"][0][@"CFBundleURLSchemes"][0];
     lcAppGroupPath = [[NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:[NSClassFromString(@"LCSharedUtils") appGroupID]] path];
     isLiveProcess = [lcAppUrlScheme isEqualToString:@"liveprocess"];
-    setenv("LC_HOME_PATH", getenv("HOME"), 0);
+    LCUpdateHomePathCache();
+    unsetenv("LC_HOME_PATH");
+    unsetenv("LP_HOME_PATH");
 
     NSString *selectedApp = [lcUserDefaults stringForKey:@"selected"];
     NSString *selectedContainer = [lcUserDefaults stringForKey:@"selectedContainer"];
@@ -714,7 +722,7 @@ int LiveContainerMain(int argc, char *argv[]) {
         if([lastLaunchType isEqualToString:@"Shared"]) {
             preferencesTo = [LCSharedUtils.appGroupPath.path stringByAppendingPathComponent:[NSString stringWithFormat:@"LiveContainer/Data/Application/%@/Library/Preferences", lastLaunchDataUUID]];
         } else {
-            NSString *docPath = [NSString stringWithFormat:@"%s/Documents", getenv("LC_HOME_PATH")];
+            NSString *docPath = [NSString stringWithFormat:@"%s/Documents", LCHomePath()];
             preferencesTo = [docPath stringByAppendingPathComponent:[NSString stringWithFormat:@"Data/Application/%@/Library/Preferences", lastLaunchDataUUID]];
         }
         // recover preferences
@@ -863,7 +871,7 @@ int LiveContainerMain(int argc, char *argv[]) {
             NSString *docPath = [NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].lastObject.path;
             tweakFolder = [docPath stringByAppendingPathComponent:@"Tweaks"];
         }
-        setenv("LC_GLOBAL_TWEAKS_FOLDER", tweakFolder.UTF8String, 1);
+        [NSUserDefaults setLCGlobalTweaksFolder:tweakFolder];
 #if TARGET_OS_MACCATALYST || TARGET_OS_SIMULATOR
         extern void DyldHookLoadableIntoProcess(void);
         DyldHookLoadableIntoProcess();

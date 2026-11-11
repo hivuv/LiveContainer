@@ -92,7 +92,55 @@ class SharedModel: ObservableObject {
     var mainWindowOpened = false
     
     public static let keychainAccessGroupCount = 128
-    
+
+    func allocatedKeychainGroup(excluding excludedContainer: LCContainer? = nil) -> Int? {
+        var usedGroups = Set<Int>()
+        for app in apps + hiddenApps {
+            for container in app.uiContainers {
+                if let excludedContainer, container === excludedContainer {
+                    continue
+                }
+                let groupId = container.keychainGroupId
+                if groupId >= 0 {
+                    usedGroups.insert(groupId)
+                }
+            }
+        }
+        let freeGroups = (1..<Self.keychainAccessGroupCount).filter { !usedGroups.contains($0) }
+        return freeGroups.randomElement()
+    }
+
+    func applyIsolationDefaultsToAllContainers() {
+        for app in apps + hiddenApps {
+            guard let bundleId = app.appInfo.bundleIdentifier() else {
+                continue
+            }
+            for container in app.uiContainers {
+                if LCSharedUtils.getContainerUsingLCScheme(withFolderName: container.folderName) != nil {
+                    continue
+                }
+                if container.storageBookMark != nil && container.resolvedContainerURL == nil {
+                    continue
+                }
+                if !container.isolateAppGroup {
+                    container.markAppGroupMigrationNeeded()
+                }
+                container.isolateAppGroup = true
+                container.spoofIdentifierForVendor = true
+                let oldGroupId = container.keychainGroupId
+                var groupId = oldGroupId
+                if groupId < 0 || groupId == 0 {
+                    groupId = allocatedKeychainGroup(excluding: container) ?? max(groupId, 0)
+                }
+                container.makeLCContainerInfoPlist(appIdentifier: bundleId, keychainGroupId: groupId)
+                if groupId != oldGroupId {
+                    container.clearKeychainIsolationError()
+                }
+            }
+            app.appInfo.containers = app.uiContainers
+        }
+    }
+
     func updateMultiLCStatus() {
         if LCUtils.appUrlScheme()?.lowercased() != "livecontainer" {
             multiLCStatus = 2

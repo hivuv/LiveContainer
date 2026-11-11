@@ -66,7 +66,15 @@ struct LCContainerView : View {
                         Text(container.folderName)
                             .foregroundStyle(.gray)
                     }
-                    Toggle(isOn: $container.isolateAppGroup) {
+                    Toggle(isOn: Binding(
+                        get: { container.isolateAppGroup },
+                        set: { newValue in
+                            if newValue && !container.isolateAppGroup {
+                                container.markAppGroupMigrationNeeded()
+                            }
+                            container.isolateAppGroup = newValue
+                        }
+                    )) {
                         Text("lc.container.isolateAppGroup".loc)
                     }
                     .onChange(of: container.isolateAppGroup) { newValue in
@@ -111,6 +119,29 @@ struct LCContainerView : View {
                                     saveIDFV()
                                 }
                         }
+                    }
+                }
+
+                if container.keychainGroupId == 0 {
+                    Section {
+                        Text("This container uses the legacy shared keychain group. Its keychain items may be visible to other legacy containers.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            assignDedicatedKeychainGroup()
+                        } label: {
+                            Text("Assign dedicated keychain group")
+                        }
+                    } header: {
+                        Text("Keychain Isolation")
+                    }
+                } else if let keychainError = container.keychainIsolationError {
+                    Section {
+                        Text("Keychain isolation could not be enabled: \(keychainError)")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    } header: {
+                        Text("Keychain Isolation")
                     }
                 }
 
@@ -253,6 +284,25 @@ struct LCContainerView : View {
         
         delegate.saveContainer(container: container)
     }
+
+    func assignDedicatedKeychainGroup() {
+        if inUse || LCSharedUtils.getContainerUsingLCScheme(withFolderName: container.folderName) != nil {
+            errorInfo = "lc.container.inUse".loc
+            errorShow = true
+            return
+        }
+        guard let newGroup = sharedModel.allocatedKeychainGroup(excluding: container) else {
+            errorInfo = "lc.container.notEnoughKeychainGroup".loc
+            errorShow = true
+            return
+        }
+        let bundleId = container.appIdentifier ?? delegate.getBundleId()
+        container.makeLCContainerInfoPlist(appIdentifier: bundleId, keychainGroupId: newGroup)
+        container.clearKeychainIsolationError()
+        delegate.saveContainer(container: container)
+        successInfo = "A dedicated keychain group was assigned. Keychain items from the legacy shared group will no longer be visible in this container."
+        successShow = true
+    }
     
     func openDataFolder() {
         let url = URL(string:"shareddocuments://\(LCPath.dataPath.path)/\(container.folderName)")
@@ -320,6 +370,7 @@ struct LCContainerView : View {
         }
         do {
             let fm = FileManager.default
+            container.reloadInfoPlist()
             for file in try fm.contentsOfDirectory(at: container.containerURL, includingPropertiesForKeys: nil) {
                 if file.lastPathComponent == "LCContainerInfo.plist" {
                     continue

@@ -50,7 +50,7 @@ NSString* findDefaultContainerWithBundleId(NSString* bundleId) {
     NSString* bundleInfoPath = [NSString stringWithFormat:@"%@/Applications/%@/LCAppInfo.plist", appGroupFolder, bundleId];
     NSDictionary* infoDict = [NSDictionary dictionaryWithContentsOfFile:bundleInfoPath];
     if(!infoDict) {
-        NSString* lcDocFolder = [[NSString stringWithUTF8String:getenv("LC_HOME_PATH")] stringByAppendingPathComponent:@"Documents"];
+        NSString* lcDocFolder = [[NSString stringWithUTF8String:LCHomePath()] stringByAppendingPathComponent:@"Documents"];
         
         bundleInfoPath = [NSString stringWithFormat:@"%@/Applications/%@/LCAppInfo.plist", lcDocFolder, bundleId];
         infoDict = [NSDictionary dictionaryWithContentsOfFile:bundleInfoPath];

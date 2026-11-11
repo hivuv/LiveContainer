@@ -31,6 +31,52 @@ void NSFMGuestHooksInit(void) {
     
 }
 
+static NSURL* legacyAppGroupURL(NSString* groupIdentifier) {
+    if (NSUserDefaults.lcAppGroupPath) {
+        return [NSURL fileURLWithPath:[NSString stringWithFormat:@"%@/LiveContainer/Data/AppGroup/%@", NSUserDefaults.lcAppGroupPath, groupIdentifier]];
+    }
+    const char* lcHomePath = LCHomePath();
+    if (lcHomePath) {
+        return [NSURL fileURLWithPath:[NSString stringWithFormat:@"%s/Documents/Data/AppGroup/%@", lcHomePath, groupIdentifier]];
+    }
+    return nil;
+}
+
+static NSString* appGroupMigrationMarkerDirectory(void) {
+    const char* home = getenv("HOME");
+    if (!home) {
+        return nil;
+    }
+    return [NSString stringWithFormat:@"%s/LCAppGroupMigrationPending", home];
+}
+
+static BOOL appGroupDirectoryIsEffectivelyEmpty(NSString* path, NSFileManager* fm) {
+    NSArray* contents = [fm contentsOfDirectoryAtPath:path error:nil];
+    if (!contents) {
+        return NO;
+    }
+    if (contents.count == 0) {
+        return YES;
+    }
+    if (contents.count != 1 || ![contents.firstObject isEqualToString:@"Library"]) {
+        return NO;
+    }
+    NSString* libraryPath = [path stringByAppendingPathComponent:@"Library"];
+    NSArray* libraryContents = [fm contentsOfDirectoryAtPath:libraryPath error:nil];
+    if (!libraryContents) {
+        return NO;
+    }
+    if (libraryContents.count == 0) {
+        return YES;
+    }
+    if (libraryContents.count != 1 || ![libraryContents.firstObject isEqualToString:@"Caches"]) {
+        return NO;
+    }
+    NSString* cachesPath = [libraryPath stringByAppendingPathComponent:@"Caches"];
+    NSArray* cachesContents = [fm contentsOfDirectoryAtPath:cachesPath error:nil];
+    return cachesContents != nil && cachesContents.count == 0;
+}
+
 // NSFileManager simulate app group
 @implementation NSFileManager(LiveContainerHooks)
 
@@ -41,10 +87,48 @@ void NSFMGuestHooksInit(void) {
     NSURL *result;
     if(isolateAppGroup) {
         result = [NSURL fileURLWithPath:[NSString stringWithFormat:@"%s/LCAppGroup/%@", getenv("HOME"), groupIdentifier]];
+
+        // One-time migration for containers that previously used a shared app
+        // group. The marker directory is only created when isolation is enabled
+        // on an existing container, so brand-new containers always start empty.
+        NSString* markerDirectory = appGroupMigrationMarkerDirectory();
+        BOOL markerDirectoryIsDir = NO;
+        if (markerDirectory && [NSFileManager.defaultManager fileExistsAtPath:markerDirectory isDirectory:&markerDirectoryIsDir] && markerDirectoryIsDir) {
+            NSString* groupMarker = [markerDirectory stringByAppendingPathComponent:groupIdentifier];
+            NSFileManager* fm = NSFileManager.defaultManager;
+            if (![fm fileExistsAtPath:groupMarker]) {
+                BOOL isDir = NO;
+                BOOL destinationExists = [fm fileExistsAtPath:result.path isDirectory:&isDir];
+                BOOL destinationEmpty = destinationExists && isDir && appGroupDirectoryIsEffectivelyEmpty(result.path, fm);
+
+                if (destinationExists && !destinationEmpty) {
+                    [fm createFileAtPath:groupMarker contents:nil attributes:nil];
+                } else {
+                    NSURL* legacyURL = legacyAppGroupURL(groupIdentifier);
+                    BOOL legacyIsDir = NO;
+                    BOOL legacyExists = legacyURL && [fm fileExistsAtPath:legacyURL.path isDirectory:&legacyIsDir] && legacyIsDir;
+                    if (legacyExists) {
+                        if (destinationExists) {
+                            [fm removeItemAtURL:result error:nil];
+                        }
+                        NSError* error = nil;
+                        [fm createDirectoryAtPath:result.path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:&error];
+                        if ([fm copyItemAtPath:legacyURL.path toPath:result.path error:&error]) {
+                            [fm createFileAtPath:groupMarker contents:nil attributes:nil];
+                        } else {
+                            [fm removeItemAtURL:result error:nil];
+                            NSLog(@"[LC] Failed to migrate app group %@: %@", groupIdentifier, error);
+                        }
+                    } else {
+                        [fm createFileAtPath:groupMarker contents:nil attributes:nil];
+                    }
+                }
+            }
+        }
     } else if (NSUserDefaults.lcAppGroupPath){
         result = [NSURL fileURLWithPath:[NSString stringWithFormat:@"%@/LiveContainer/Data/AppGroup/%@", NSUserDefaults.lcAppGroupPath, groupIdentifier]];
     } else {
-        result = [NSURL fileURLWithPath:[NSString stringWithFormat:@"%s/Documents/Data/AppGroup/%@", getenv("LC_HOME_PATH"), groupIdentifier]];
+        result = [NSURL fileURLWithPath:[NSString stringWithFormat:@"%s/Documents/Data/AppGroup/%@", LCHomePath(), groupIdentifier]];
     }
     [NSFileManager.defaultManager createDirectoryAtURL:[result URLByAppendingPathComponent:@"Library/Caches"] withIntermediateDirectories:YES attributes:nil error:nil];
     return result;
@@ -60,7 +144,7 @@ void NSFMGuestHooksInit(void) {
             // unfortunately we cannot hook sandbox_container_path_for_pid, so we symlink Cookies folder in normal mode
             // see NSFileManager+GuestHooks.m for more info
             NSFileManager *fm = NSFileManager.defaultManager;
-            const char *lcHomePath = getenv(NSUserDefaults.isLiveProcess ? "LP_HOME_PATH" : "LC_HOME_PATH");
+            const char *lcHomePath = NSUserDefaults.isLiveProcess ? LPHomePath() : LCHomePath();
             NSString *libraryPath = [@(lcHomePath) stringByAppendingPathComponent:@"Library"];
             NSString *cookies2Path = [libraryPath stringByAppendingPathComponent:@"Cookies2"];
             NSString *cookiesPath = [libraryPath stringByAppendingPathComponent:@"Cookies"];

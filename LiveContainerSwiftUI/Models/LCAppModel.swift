@@ -217,18 +217,42 @@ class LCAppModel: ObservableObject, Hashable {
         
         if uiContainers.isEmpty {
             let newName = NSUUID().uuidString
-            let newContainer = LCContainer(folderName: newName, name: newName, isShared: uiIsShared)
+            let newContainer = LCContainer(
+                folderName: newName,
+                name: newName,
+                isShared: uiIsShared,
+                isolateAppGroup: LCUtils.newContainerShouldIsolateAppGroup,
+                spoofIdentifierForVendor: LCUtils.newContainerShouldSpoofIDFV
+            )
+            guard let keychainGroupId = DataManager.shared.model.allocatedKeychainGroup(excluding: newContainer) else {
+                throw "lc.container.notEnoughKeychainGroup".loc
+            }
             uiContainers.append(newContainer)
             if uiSelectedContainer == nil {
                 uiSelectedContainer = newContainer;
             }
             appInfo.containers = uiContainers;
-            newContainer.makeLCContainerInfoPlist(appIdentifier: appInfo.bundleIdentifier()!, keychainGroupId: Int.random(in: 0..<SharedModel.keychainAccessGroupCount))
+            newContainer.makeLCContainerInfoPlist(appIdentifier: appInfo.bundleIdentifier()!, keychainGroupId: keychainGroupId)
             appInfo.dataUUID = newName
             uiDefaultDataFolder = newName
         }
         if let containerFolderName {
             uiSelectedContainer = uiContainers.first { $0.folderName == containerFolderName } ?? uiSelectedContainer
+        }
+        if let selectedContainer = uiSelectedContainer,
+           !selectedContainer.folderName.isEmpty,
+           selectedContainer.storageBookMark == nil || selectedContainer.resolvedContainerURL != nil {
+            var keychainGroupId = selectedContainer.keychainGroupId
+            if keychainGroupId < 0 {
+                guard let allocatedGroup = DataManager.shared.model.allocatedKeychainGroup(excluding: selectedContainer) else {
+                    throw "lc.container.notEnoughKeychainGroup".loc
+                }
+                keychainGroupId = allocatedGroup
+            }
+            if selectedContainer.spoofIdentifierForVendor && selectedContainer.spoofedIdentifier == nil {
+                selectedContainer.spoofedIdentifier = UUID().uuidString
+            }
+            selectedContainer.makeLCContainerInfoPlist(appIdentifier: appInfo.bundleIdentifier()!, keychainGroupId: keychainGroupId)
         }
         let currentDataFolder = containerFolderName ?? uiSelectedContainer?.folderName
         

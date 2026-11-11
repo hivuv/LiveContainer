@@ -9,6 +9,22 @@ import LocalAuthentication
 
 extension LCUtils {
     public static let appGroupUserDefault = UserDefaults.init(suiteName: LCSharedUtils.appGroupID()) ?? UserDefaults.standard
+
+    public static var newContainerShouldIsolateAppGroup: Bool {
+        let defaults = appGroupUserDefault
+        if defaults.object(forKey: "LCNewContainerIsolateAppGroup") == nil {
+            return true
+        }
+        return defaults.bool(forKey: "LCNewContainerIsolateAppGroup")
+    }
+
+    public static var newContainerShouldSpoofIDFV: Bool {
+        let defaults = appGroupUserDefault
+        if defaults.object(forKey: "LCNewContainerSpoofIDFV") == nil {
+            return true
+        }
+        return defaults.bool(forKey: "LCNewContainerSpoofIDFV")
+    }
     
     public static func signTweaks(tweakFolderUrl: URL, force : Bool = false, progressHandler : ((Progress) -> Void)? = nil) async throws {
         guard LCSharedUtils.certificatePassword() != nil else {

@@ -1,4 +1,11 @@
 #import "utils.h"
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
 
 void __assert_rtn(const char* func, const char* file, int line, const char* failedexpr) {
     [NSException raise:NSInternalInconsistencyException format:@"Assertion failed: (%s), file %s, line %d.\n", failedexpr, file, line];
@@ -128,6 +135,56 @@ uint64_t aarch64_emulate_adrp_ldr(uint32_t instruction, uint32_t ldrInstruction,
     return adrp_target + (uint64_t) imm12;
 }
 
+
+static char lcHomePathCache[PATH_MAX];
+static char lpHomePathCache[PATH_MAX];
+
+const char *LCHomePath(void) {
+    const char *path = getenv("LC_HOME_PATH");
+    if (path) {
+        strlcpy(lcHomePathCache, path, sizeof(lcHomePathCache));
+        return lcHomePathCache;
+    }
+    if (lcHomePathCache[0]) {
+        return lcHomePathCache;
+    }
+    path = getenv("HOME");
+    if (!path) {
+        return "";
+    }
+    strlcpy(lcHomePathCache, path, sizeof(lcHomePathCache));
+    return lcHomePathCache;
+}
+
+const char *LPHomePath(void) {
+    const char *path = getenv("LP_HOME_PATH");
+    if (path) {
+        strlcpy(lpHomePathCache, path, sizeof(lpHomePathCache));
+        return lpHomePathCache;
+    }
+    if (lpHomePathCache[0]) {
+        return lpHomePathCache;
+    }
+    return LCHomePath();
+}
+
+void LCUpdateHomePathCache(void) {
+    const char *home = getenv("LC_HOME_PATH");
+    if (!home) {
+        home = getenv("HOME");
+    }
+    if (home) {
+        strlcpy(lcHomePathCache, home, sizeof(lcHomePathCache));
+    }
+
+    const char *processHome = getenv("LP_HOME_PATH");
+    if (!processHome) {
+        processHome = getenv("HOME");
+    }
+    if (processHome) {
+        strlcpy(lpHomePathCache, processHome, sizeof(lpHomePathCache));
+    }
+}
 
 @implementation NSDictionary(lc)
 

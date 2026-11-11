@@ -4,6 +4,9 @@
 #import "utils.h"
 @import MachO;
 
+#include <stdlib.h>
+#include <sys/xattr.h>
+
 extern NSUserDefaults *lcUserDefaults;
 extern NSString *lcAppUrlScheme;
 extern NSBundle *lcMainBundle;
@@ -338,7 +341,7 @@ NSString* FBSOpenApplicationOptionKeyPayloadURL = @"__PayloadURL";
 }
 
 + (NSBundle*)findBundleWithBundleId:(NSString*)bundleId isSharedAppOut:(bool*)isSharedAppOut {
-    NSString *docPath = [NSString stringWithFormat:@"%s/Documents", getenv("LC_HOME_PATH")];
+    NSString *docPath = [NSString stringWithFormat:@"%s/Documents", LCHomePath()];
     
     NSURL *appGroupFolder = nil;
     
@@ -431,5 +434,55 @@ NSString* FBSOpenApplicationOptionKeyPayloadURL = @"__PayloadURL";
     }
 
     return result;
+}
+
+static const char *LCContainerInfoXattrName = "user.container.metadata";
+
++ (NSDictionary *)containerInfoForHomePath:(NSString *)homePath {
+    if (homePath.length == 0) {
+        return nil;
+    }
+
+    const char *path = homePath.fileSystemRepresentation;
+    ssize_t size = getxattr(path, LCContainerInfoXattrName, NULL, 0, 0, 0);
+    if (size > 0) {
+        void *buffer = malloc((size_t)size);
+        if (buffer) {
+            ssize_t readSize = getxattr(path, LCContainerInfoXattrName, buffer, (size_t)size, 0, 0);
+            if (readSize == size) {
+                NSData *data = [NSData dataWithBytes:buffer length:(NSUInteger)size];
+                id plist = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:NULL error:NULL];
+                if ([plist isKindOfClass:[NSDictionary class]]) {
+                    free(buffer);
+                    return plist;
+                }
+            }
+            free(buffer);
+        }
+    }
+
+    NSString *legacyPath = [homePath stringByAppendingPathComponent:@"LCContainerInfo.plist"];
+    NSDictionary *legacyInfo = [NSDictionary dictionaryWithContentsOfFile:legacyPath];
+    if (legacyInfo) {
+        if ([self writeContainerInfo:legacyInfo forHomePath:homePath]) {
+            [[NSFileManager defaultManager] removeItemAtPath:legacyPath error:nil];
+        }
+        return legacyInfo;
+    }
+
+    return nil;
+}
+
++ (BOOL)writeContainerInfo:(NSDictionary *)info forHomePath:(NSString *)homePath {
+    if (!info || homePath.length == 0) {
+        return NO;
+    }
+
+    NSData *data = [NSPropertyListSerialization dataWithPropertyList:info format:NSPropertyListBinaryFormat_v1_0 options:0 error:NULL];
+    if (!data) {
+        return NO;
+    }
+
+    return setxattr(homePath.fileSystemRepresentation, LCContainerInfoXattrName, data.bytes, data.length, 0, 0) == 0;
 }
 @end

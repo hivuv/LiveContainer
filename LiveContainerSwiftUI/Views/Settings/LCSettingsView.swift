@@ -67,10 +67,13 @@ struct LCSettingsView: View {
     @AppStorage("LCWaitForDebugger") var waitForDebugger = false
     @AppStorage("LCSharePrivateDataWithLiveProcess") var sharePrivateDataWithLiveProcess = false
     @AppStorage("BKNoWatchdogs") var disableLiveProcessWatchdog = false
+    @AppStorage("LCNewContainerIsolateAppGroup", store: LCUtils.appGroupUserDefault) var newContainerIsolateAppGroup = true
+    @AppStorage("LCNewContainerSpoofIDFV", store: LCUtils.appGroupUserDefault) var newContainerSpoofIDFV = true
     
     @EnvironmentObject private var sharedModel : SharedModel
     
     @State private var isViewAppeared = false
+    @State private var showApplyIsolationDefaultsAlert = false
     
     let storeName = LCUtils.getStoreName()
     
@@ -225,6 +228,24 @@ struct LCSettingsView: View {
                 } footer: {
                     Text("lc.settings.FrameIconDesc".loc)
                 }
+
+                Section {
+                    Toggle(isOn: $newContainerIsolateAppGroup) {
+                        Text("lc.container.isolateAppGroup".loc)
+                    }
+                    Toggle(isOn: $newContainerSpoofIDFV) {
+                        Text("lc.container.spoofIdentifierForVendor".loc)
+                    }
+                    Button {
+                        showApplyIsolationDefaultsAlert = true
+                    } label: {
+                        Text("Apply to all existing containers")
+                    }
+                } header: {
+                    Text("New Container Defaults")
+                } footer: {
+                    Text("These defaults apply to newly created containers. Applying them to existing containers may make their app group and keychain data inaccessible.")
+                }
                 
                 Section {
                     Toggle(isOn: $silentSwitchApp) {
@@ -378,6 +399,15 @@ struct LCSettingsView: View {
                 }
             }
             .navigationBarTitle("lc.tabView.settings".loc)
+            .alert("Apply isolation defaults to all containers?", isPresented: $showApplyIsolationDefaultsAlert) {
+                Button("Apply", role: .destructive) {
+                    sharedModel.applyIsolationDefaultsToAllContainers()
+                }
+                Button("Cancel", role: .cancel) {
+                }
+            } message: {
+                Text("This enables app group isolation and IDFV spoofing for every container. Containers using the legacy shared keychain group are moved to a dedicated group, so their existing keychain items may become inaccessible. App group data is copied automatically on the next launch.")
+            }
             .alert("lc.common.error".loc, isPresented: $errorShow){
             } message: {
                 Text(errorInfo)

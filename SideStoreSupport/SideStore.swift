@@ -100,7 +100,7 @@ class RefreshHandler: NSObject, RefreshServer {
 
         // launch SideStore if it's not running
         if (sideStorePid <= 0 || getpgid(sideStorePid) <= 0) && launchContinuation == nil {
-            let lcHome = String(cString:getenv("LC_HOME_PATH"))
+            let lcHome = String(cString:LCHomePath())
             let sideStoreHomeURL = URL(fileURLWithPath: lcHome).appendingPathComponent("Documents/SideStore")
             let bookmarkData = bookmarkForURL(sideStoreHomeURL)!
 

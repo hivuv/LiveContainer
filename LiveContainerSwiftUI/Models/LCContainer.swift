@@ -39,13 +39,13 @@ class LCContainer : ObservableObject, Hashable {
             return LCPath.dataPath.appendingPathComponent("\(folderName)")
         }
     }
-    private var infoDictUrl : URL {
+    private var legacyInfoDictUrl : URL {
         return containerURL.appendingPathComponent("LCContainerInfo.plist")
     }
     public var keychainGroupId : Int {
         get {
             if infoDict == nil {
-                infoDict = NSDictionary(contentsOf: infoDictUrl) as? [String : Any]
+                reloadInfoPlist()
             }
             guard let infoDict else {
                 return -1
@@ -57,13 +57,37 @@ class LCContainer : ObservableObject, Hashable {
     public var appIdentifier : String? {
         get {
             if infoDict == nil {
-                infoDict = NSDictionary(contentsOf: infoDictUrl) as? [String : Any]
+                reloadInfoPlist()
             }
             guard let infoDict else {
                 return nil
             }
             return infoDict["appIdentifier"] as? String ?? nil
         }
+    }
+
+    public var hasContainerInfo : Bool {
+        reloadInfoPlist()
+        return infoDict != nil
+    }
+
+    public var keychainIsolationError : String? {
+        let errorURL = containerURL.appendingPathComponent("LCKeychainIsolationError")
+        guard let error = try? String(contentsOf: errorURL, encoding: .utf8) else {
+            return nil
+        }
+        let trimmed = error.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func markAppGroupMigrationNeeded() {
+        let markerURL = containerURL.appendingPathComponent("LCAppGroupMigrationPending", isDirectory: true)
+        try? FileManager.default.createDirectory(at: markerURL, withIntermediateDirectories: true)
+    }
+
+    func clearKeychainIsolationError() {
+        let errorURL = containerURL.appendingPathComponent("LCKeychainIsolationError")
+        try? FileManager.default.removeItem(at: errorURL)
     }
     
     init(folderName: String, name: String, isShared : Bool, isolateAppGroup: Bool = false, spoofIdentifierForVendor: Bool = false, bookmarkData: Data? = nil, resolvedContainerURL: URL? = nil) {
@@ -74,6 +98,10 @@ class LCContainer : ObservableObject, Hashable {
         self.spoofIdentifierForVendor = spoofIdentifierForVendor
         self.storageBookMark = bookmarkData
         self.resolvedContainerURL = resolvedContainerURL
+        self.spoofedIdentifier = nil
+        if spoofIdentifierForVendor {
+            self.spoofedIdentifier = UUID().uuidString
+        }
     }
     
     convenience init(infoDict : [String : Any], isShared : Bool) {
@@ -103,20 +131,12 @@ class LCContainer : ObservableObject, Hashable {
                 self.bookmarkResolved = true
         }
         
-        do {
-            let fm = FileManager.default
-            if(!fm.fileExists(atPath: infoDictUrl.deletingLastPathComponent().path)) {
-                try fm.createDirectory(at: infoDictUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let plistInfo = LCSharedUtils.containerInfo(forHomePath: containerURL.path) as? [String : Any] {
+            isolateAppGroup = plistInfo["isolateAppGroup"] as? Bool ?? false
+            spoofIdentifierForVendor = plistInfo["spoofIdentifierForVendor"] as? Bool ?? false
+            if let storedIdentifier = plistInfo["spoofedIdentifierForVendor"] as? String {
+                spoofedIdentifier = storedIdentifier
             }
-            
-            let plistInfo = try PropertyListSerialization.propertyList(from: Data(contentsOf: infoDictUrl), format: nil)
-            if let plistInfo = plistInfo as? [String : Any] {
-                isolateAppGroup = plistInfo["isolateAppGroup"] as? Bool ?? false
-                spoofIdentifierForVendor = plistInfo["spoofIdentifierForVendor"] as? Bool ?? false
-                spoofedIdentifier = plistInfo["spoofedIdentifierForVendor"] as? String
-            }
-        } catch {
-            
         }
     }
     
@@ -145,19 +165,23 @@ class LCContainer : ObservableObject, Hashable {
         
         do {
             let fm = FileManager.default
-            if(!fm.fileExists(atPath: infoDictUrl.deletingLastPathComponent().path)) {
-                try fm.createDirectory(at: infoDictUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if(!fm.fileExists(atPath: containerURL.path)) {
+                try fm.createDirectory(at: containerURL, withIntermediateDirectories: true)
             }
             
-            let plistData = try PropertyListSerialization.data(fromPropertyList: infoDict as Any, format: .binary, options: 0)
-            try plistData.write(to: infoDictUrl)
+            if let infoDict, LCSharedUtils.writeContainerInfo(infoDict as NSDictionary, forHomePath: containerURL.path) {
+                try? fm.removeItem(at: legacyInfoDictUrl)
+            } else {
+                let plistData = try PropertyListSerialization.data(fromPropertyList: infoDict as Any, format: .binary, options: 0)
+                try plistData.write(to: legacyInfoDictUrl)
+            }
         } catch {
             
         }
     }
     
     func reloadInfoPlist() {
-        infoDict = NSDictionary(contentsOf: infoDictUrl) as? [String : Any]
+        infoDict = LCSharedUtils.containerInfo(forHomePath: containerURL.path) as? [String : Any]
     }
 
     func loadName() {
@@ -168,7 +192,9 @@ class LCContainer : ObservableObject, Hashable {
         name = infoDict["name"] as? String ?? "ERROR"
         isolateAppGroup = infoDict["isolateAppGroup"] as? Bool ?? false
         spoofIdentifierForVendor = infoDict["spoofIdentifierForVendor"] as? Bool ?? false
-        spoofedIdentifier = infoDict["spoofedIdentifierForVendor"] as? String
+        if let storedIdentifier = infoDict["spoofedIdentifierForVendor"] as? String {
+            spoofedIdentifier = storedIdentifier
+        }
     }
     
     static func == (lhs: LCContainer, rhs: LCContainer) -> Bool {

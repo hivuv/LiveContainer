@@ -27,6 +27,10 @@ bool aarch64_emulate_add_imm(uint32_t instruction, uint32_t *dst, uint32_t *src,
 uint64_t aarch64_emulate_adrp_add(uint32_t instruction, uint32_t addInstruction, uint64_t pc);
 uint64_t aarch64_emulate_adrp_ldr(uint32_t instruction, uint32_t ldrInstruction, uint64_t pc);
 
+const char *LCHomePath(void);
+const char *LPHomePath(void);
+void LCUpdateHomePathCache(void);
+
 static inline void swizzle(Class class, SEL originalAction, SEL swizzledAction) {
     method_exchangeImplementations(class_getInstanceMethod(class, originalAction), class_getInstanceMethod(class, swizzledAction));
 }
@@ -49,6 +53,8 @@ static inline void swizzleClassMethod(Class class, SEL originalAction, SEL swizz
 + (bool)isSideStore;
 + (bool)sideStoreExist;
 + (NSString*)lcLaunchURL;
++ (NSString *)lcGlobalTweaksFolder;
++ (void)setLCGlobalTweaksFolder:(NSString *)folder;
 @end
 
 @interface NSDictionary(lc)

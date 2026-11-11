@@ -25,6 +25,14 @@ OSStatus (*orig_SecKeyGeneratePair)(CFDictionaryRef query, SecKeyRef *publicKey,
 NSString* accessGroup = nil;
 NSString* containerId = nil;
 
+static NSString* keychainIsolationErrorPath(void) {
+    const char* home = getenv("HOME");
+    if (!home) {
+        return nil;
+    }
+    return [NSString stringWithFormat:@"%s/LCKeychainIsolationError", home];
+}
+
 OSStatus new_SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result) {
     NSMutableDictionary *attributesCopy = ((__bridge NSDictionary *)attributes).mutableCopy;
     attributesCopy[(__bridge id)kSecAttrAccessGroup] = accessGroup;
@@ -139,7 +147,16 @@ void SecItemGuestHooksInit(void)  {
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, NULL);
     if(status == errSecMissingEntitlement) {
         NSLog(@"[LC] failed to access keychain access group %@", accessGroup);
+        NSString* errorPath = keychainIsolationErrorPath();
+        if (errorPath) {
+            [accessGroup writeToFile:errorPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        }
         return;
+    }
+
+    NSString* errorPath = keychainIsolationErrorPath();
+    if (errorPath) {
+        [[NSFileManager defaultManager] removeItemAtPath:errorPath error:nil];
     }
     
     litehook_rebind_symbol(LITEHOOK_REBIND_GLOBAL, SecItemAdd, new_SecItemAdd, nil);
